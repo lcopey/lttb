@@ -1,8 +1,14 @@
 use std::cmp::min;
 
-use ndarray::{self, s, stack, Array, Array2, Axis};
+use ndarray::{self, s, Array2, Axis};
+use num_traits::{Float, FromPrimitive};
+use pyo3::prelude::*;
+use pyo3::types::PySequence;
 
-fn lttb(value: Array2<f64>, n: usize) -> Array2<f64> {
+fn lttb_from_array<F>(value: Array2<F>, n: usize) -> Array2<F>
+where
+    F: Float + FromPrimitive,
+{
     let len = value.len_of(Axis(0));
     let step = (len - 2) as f64 / (n - 2) as f64;
     let mut previous = value.index_axis(Axis(0), 0);
@@ -33,7 +39,7 @@ fn lttb(value: Array2<f64>, n: usize) -> Array2<f64> {
                 let yb = v[1];
                 let xc = avg_next[0];
                 let yc = avg_next[1];
-                let area = 0.5 * ((xa - xc) * (yb - ya) - (xa - xb) * (yc - ya)).abs();
+                let area = ((xa - xc) * (yb - ya) - (xa - xb) * (yc - ya)).abs();
                 (iteration, area)
             })
             .max_by(|(_, area1), (_, area2)| area1.partial_cmp(area2).unwrap())
@@ -46,9 +52,28 @@ fn lttb(value: Array2<f64>, n: usize) -> Array2<f64> {
     value.select(Axis(0), &indices)
 }
 
-fn main() {
-    let x = Array::linspace(-3., 3., 100);
-    let y = x.map(|v: &f64| (-v * v).exp());
-    let data = stack![Axis(1), x, y];
-    println!("{:?}", lttb(data, 5));
+fn lttb_from_list<F>(value: Vec<Vec<F>>, n: usize) -> Vec<Vec<F>>
+where
+    F: Float + FromPrimitive,
+{
+    let value =
+        Array2::from_shape_vec((value.len(), 2), value.into_iter().flatten().collect()).unwrap();
+    lttb_from_array(value, n)
+        .axis_iter(Axis(0))
+        .map(|row| row.iter().cloned().collect())
+        .collect()
+}
+
+#[pyfunction]
+#[pyo3(name="lttb_from_list")]
+fn py_lttb_from_list(value: &Bound<'_, PySequence>, n: usize) -> PyResult<Vec<Vec<f64>>> {
+    let value: Vec<Vec<f64>> = value.extract().unwrap();
+    Ok(lttb_from_list(value, n))
+}
+
+#[pymodule]
+fn lttb(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(py_lttb_from_list, m)?)?;
+
+    Ok(())
 }
