@@ -7,7 +7,9 @@ fn lttb(value: Array2<f64>, n: usize) -> Array2<f64> {
     let step = (len - 2) as f64 / (n - 2) as f64;
     let mut previous = value.index_axis(Axis(0), 0);
 
-    let mut indices = Vec::<usize>::from([0]);
+    let mut indices = Vec::<usize>::with_capacity(n);
+    indices.push(0);
+
     for bucket in 0..n - 2 {
         let current_start_idx = (bucket as f64 * step + 1.).floor() as usize;
         let current_end_idx = ((bucket as f64 + 1.) * step + 1.).floor() as usize;
@@ -20,26 +22,23 @@ fn lttb(value: Array2<f64>, n: usize) -> Array2<f64> {
             .mean_axis(Axis(0))
             .unwrap();
 
-        let mut max_area: f64 = 0.;
-        let mut best = 0;
-        let mut iteration = 0;
-        value
+        let (best, _) = value
             .slice(s![current_start_idx..current_end_idx, ..])
-            .map_axis(Axis(1), |v| {
-                let xa = previous.get(0).unwrap();
-                let ya = previous.get(1).unwrap();
-                let xb = v.get(0).unwrap();
-                let yb = v.get(1).unwrap();
-                let xc = avg_next.get(0).unwrap();
-                let yc = avg_next.get(1).unwrap();
+            .axis_iter(Axis(0))
+            .enumerate()
+            .map(|(iteration, v)| {
+                let xa = previous[0];
+                let ya = previous[1];
+                let xb = v[0];
+                let yb = v[1];
+                let xc = avg_next[0];
+                let yc = avg_next[1];
                 let area = 0.5 * ((xa - xc) * (yb - ya) - (xa - xb) * (yc - ya)).abs();
-                if area > max_area {
-                    max_area = area;
-                    best = iteration;
-                }
-                iteration += 1;
-            });
-        best = current_start_idx + best;
+                (iteration, area)
+            })
+            .max_by(|(_, area1), (_, area2)| area1.partial_cmp(area2).unwrap())
+            .unwrap();
+        let best = current_start_idx + best;
         indices.push(best);
         previous = value.index_axis(Axis(0), best);
     }
